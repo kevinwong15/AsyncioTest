@@ -26,3 +26,5 @@ if __name__ == '__main__':
 
     session, scenarios = get_scenarios()
     update_scenarios(session, scenarios)
+
+    return
