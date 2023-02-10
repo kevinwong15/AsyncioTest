@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Float
 from sqlalchemy.sql import func
 from db.orm_base import Base
+from db.session import engine
 
 
 class AgeNext(Base):
@@ -26,3 +27,8 @@ class Scenario(Base):
     ages = relationship("AgeNext")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     modified_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+def create_db():
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
