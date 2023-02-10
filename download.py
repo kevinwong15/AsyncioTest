@@ -1,59 +1,72 @@
+
 import aiohttp
 import asyncio
-
+import time
 from db.models import AgeNext, Scenario
 from db.session import Session
 from sqlalchemy.sql import func
-
 from typing import Tuple
+from viewer import StatusViewer
 
-def load_download_data():
-    with Session() as session:
-        scenarios = session.query(AgeNext, Scenario).join(Scenario).all()
-        return scenarios
 
-async def get_page(session, sem, id, url: Tuple[AgeNext, Scenario], viewer):
+def load_download_data(db_session):
+    scenarios = (
+        db_session
+        .query(AgeNext, Scenario)
+        .join(Scenario)
+        .filter(AgeNext.is_downloaded == False)
+        .all()
+    )
+    return scenarios
+
+
+async def get_page(db_session, session, sem, id,
+                   url: Tuple[AgeNext, Scenario],
+                   viewer: StatusViewer):
 
     age_next, scenario = url
+    async with sem:
 
-    with Session() as db_session:
-        age_next.start_date = func.now()
+        node_id = viewer.start_node(f'Downloading {id}...')
+        start_time = time.time()
+
+        age_next.download_at = func.now()
         db_session.commit()
 
-    async with sem:
-        viewer.update_status(id, f'Downloading {id}...')
-
-
-        with Session() as db_session:
-            age_next.start_date = func.now()
+        try:
+            await download_page(session, id, scenario.url, age_next.age)
+            age_next.is_downloaded = True
+            age_next.download_time = time.time() - start_time
             db_session.commit()
+        except:
+            pass
 
-        await download_page(session, id, scenario.url, age_next.age)
+        viewer.completed_count += 1
+        viewer.release_node(node_id, '')
 
-        with Session() as db_session:
-            age_next.is_success = True
-            age_next.end_date = func.now()
-            db_session.commit()
 
 async def download_page(session, id, url, age):
+    async with session.get(url) as r:
+        result = await r.text()
+        with open(f'data/test{id+1}-{age}.txt', 'w') as f:
+            f.write(result)
+        return result
 
-        async with session.get(url) as r:
 
-            result = await r.text()
-            with open(f'data/test{id+1}-{age}.txt', 'w') as f:
-                f.write(result)
-            return result
-
-async def download_all(viewer, connect_count):
+async def download_all(viewer: StatusViewer, connect_count):
 
     sem = asyncio.Semaphore(connect_count)
 
-    urls = load_download_data()
+    with Session() as db_session:
 
-    async with aiohttp.ClientSession() as session:
-        tasks = []
-        for id, url in enumerate(urls):
-            task = asyncio.create_task(get_page(session, sem, id, url, viewer))
-            tasks.append(task)
-        results = await asyncio.gather(*tasks)
-        return results
+        urls = load_download_data(db_session)
+        viewer.total_count = len(urls)
+
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for id, url in enumerate(urls):
+                task = asyncio.create_task(
+                    get_page(db_session, session, sem, id, url, viewer))
+                tasks.append(task)
+            results = await asyncio.gather(*tasks)
+            return results

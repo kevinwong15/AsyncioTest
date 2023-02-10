@@ -1,15 +1,20 @@
-
-from sqlalchemy.orm import declarative_base, Session
 from sqlalchemy.sql import func
-from session import Session
+from db.session import Session
+from db.models import AgeNext, Scenario
+from sqlalchemy import create_engine
 
-from models import AgeNext, Scenario
+from db.orm_base import Base
+
+def create_db():
+    sqlite_path = r'c:\temp\repo\test_bed\progress.db'
+    engine = create_engine(f'sqlite:///{sqlite_path}', echo=True)
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+
 
 def create_scenarios():
-
     # create session and add objects
     with Session() as session:
-
         items = [
             Scenario(
                 url=f'https://books.toscrape.com/catalogue/page-{id+1}.html',
@@ -17,9 +22,10 @@ def create_scenarios():
             )
             for id in range(0, 50)
         ]
-
         session.add_all(items)
         session.commit()
 
+
 if __name__ == '__main__':
+    create_db()
     create_scenarios()
